@@ -442,24 +442,7 @@ export default function App() {
               </div>
             )}
 
-            {currentTool === 'area' && (
-              <div className="space-y-2">
-                <Label className="text-[10px] uppercase font-bold opacity-70">Hatch</Label>
-                <Tabs value={currentHatch} onValueChange={setCurrentHatch}>
-                  <TabsList className="w-full bg-stone-200/50 p-1 h-8 rounded-none border border-border">
-                    {HATCH_PATTERNS.map(h => (
-                      <TabsTrigger 
-                        key={h.id} 
-                        value={h.id} 
-                        className="flex-1 text-[8px] uppercase font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-none"
-                      >
-                        {h.name.split(' ')[0]}
-                      </TabsTrigger>
-                    ))}
-                  </TabsList>
-                </Tabs>
-              </div>
-            )}
+            {/* Area hatch options removed - always solid */}
           </div>
 
           <div className="mt-auto pt-6 flex flex-col gap-2">

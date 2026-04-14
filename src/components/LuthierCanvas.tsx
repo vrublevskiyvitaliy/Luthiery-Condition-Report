@@ -324,7 +324,6 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               fill={ann.color + '33'} // Transparent fill
               closed
               tension={0.5}
-              dash={ann.hatchPattern === 'diagonal' ? [5, 5] : undefined}
             />
             <MarkerPin num={displayNum} x={markerX} y={markerY} color={ann.color} />
           </Group>
