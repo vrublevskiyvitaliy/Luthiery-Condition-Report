@@ -4,6 +4,8 @@ import { Annotation, Point } from '@/src/types';
 import useImage from 'use-image';
 import frontSvg from '../front.svg';
 import backSvg from '../back.svg';
+import ribsSvg from '../ribs.svg';
+import scrollSvg from '../scroll.svg';
 
 interface LuthierCanvasProps {
   annotations: Annotation[];
@@ -12,7 +14,7 @@ interface LuthierCanvasProps {
   currentColor: string;
   currentWidth: number;
   currentHatch: string;
-  view: 'front' | 'back';
+  view: 'front' | 'back' | 'ribs' | 'scroll';
   width: number;
   height: number;
   scale: number;
@@ -81,8 +83,15 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
   // Use provided SVG outlines
   const [frontImage] = useImage(frontSvg);
   const [backImage] = useImage(backSvg);
+  const [ribsImage] = useImage(ribsSvg);
+  const [scrollImage] = useImage(scrollSvg);
 
-  const currentImage = view === 'front' ? frontImage : view === 'back' ? backImage : null;
+  const currentImage = 
+    view === 'front' ? frontImage : 
+    view === 'back' ? backImage : 
+    view === 'ribs' ? ribsImage : 
+    view === 'scroll' ? scrollImage : 
+    null;
 
   const handleWheel = (e: any) => {
     e.evt.preventDefault();
@@ -122,22 +131,22 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
     
     let renderWidth, renderHeight, x, y;
     
-    // Add 5% padding to ensure full visibility
-    const padding = 0.95;
-    const paddedWidth = width * padding;
-    const paddedHeight = height * padding;
-    const paddedCanvasRatio = paddedWidth / paddedHeight;
+    // Fit to safe area (92% width, 96% height)
+    const safeWidth = width * 0.92;
+    const safeHeight = height * 0.96;
+    const safeRatio = safeWidth / safeHeight;
 
-    if (imgRatio < paddedCanvasRatio) {
+    if (imgRatio < safeRatio) {
       // Fit by height
-      renderHeight = paddedHeight;
-      renderWidth = paddedHeight * imgRatio;
+      renderHeight = safeHeight;
+      renderWidth = safeHeight * imgRatio;
     } else {
       // Fit by width
-      renderWidth = paddedWidth;
-      renderHeight = paddedWidth / imgRatio;
+      renderWidth = safeWidth;
+      renderHeight = safeWidth / imgRatio;
     }
     
+    // Center in the entire canvas
     x = (width - renderWidth) / 2;
     y = (height - renderHeight) / 2;
     
@@ -146,8 +155,8 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
 
   const imgDim = getImageDimensions();
 
-  const minX = width * 0.25;
-  const maxX = width * 0.75;
+  const minX = width * 0.04;
+  const maxX = width * 0.96;
   const minY = height * 0.02;
   const maxY = height * 0.98;
 
@@ -193,7 +202,14 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
     };
 
     if (currentTool === 'crack' || currentTool === 'area') {
-      setPoints([...points, pos.x, pos.y]);
+      // Smoothing: only add point if it's far enough from the last point
+      const lastX = points[points.length - 2];
+      const lastY = points[points.length - 1];
+      const dist = Math.sqrt(Math.pow(pos.x - lastX, 2) + Math.pow(pos.y - lastY, 2));
+      
+      if (dist > 5) {
+        setPoints([...points, pos.x, pos.y]);
+      }
     } else if (currentTool === 'arrow') {
       // For arrow, we update the last point for preview and clamp to safe area
       const clampedX = Math.max(minX, Math.min(pos.x, maxX));
@@ -303,7 +319,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               points={ann.points}
               stroke={ann.color}
               strokeWidth={ann.width}
-              tension={0.5}
+              tension={0.8}
               lineCap="round"
               lineJoin="round"
             />
@@ -323,7 +339,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               strokeWidth={2}
               fill={ann.color + '33'} // Transparent fill
               closed
-              tension={0.5}
+              tension={0.8}
             />
             <MarkerPin num={displayNum} x={markerX} y={markerY} color={ann.color} />
           </Group>
@@ -430,6 +446,10 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
           </Group>
         );
       case 'arrow':
+        const arrowMarkerX = ann.points[0];
+        const arrowMarkerY = ann.points[1];
+        const arrowDisplayNum = ann.displayNumber || 0;
+
         return (
           <Group 
             key={ann.id}
@@ -444,6 +464,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               pointerLength={10}
               pointerWidth={10}
             />
+            <MarkerPin num={arrowDisplayNum} x={arrowMarkerX} y={arrowMarkerY} color={ann.color} />
           </Group>
         );
       default:
@@ -485,9 +506,9 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
           {/* Safe Area Guide */}
           {!hideGuides && (
             <Rect
-              x={width * 0.25}
+              x={width * 0.04}
               y={height * 0.02}
-              width={width * 0.5}
+              width={width * 0.92}
               height={height * 0.96}
               stroke="#64748b"
               strokeWidth={2}

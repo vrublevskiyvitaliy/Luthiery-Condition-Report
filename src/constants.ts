@@ -22,6 +22,8 @@ export const HATCH_PATTERNS = [
 export const VIEWS = [
   { id: 'front', name: 'Front' },
   { id: 'back', name: 'Back' },
+  { id: 'ribs', name: 'Ribs' },
+  { id: 'scroll', name: 'Scroll' },
 ] as const;
 
 export const TOOL_TYPES = [

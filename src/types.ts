@@ -11,9 +11,10 @@ export interface BaseAnnotation {
   color: string;
   number: number;
   notes?: string;
-  view: 'front' | 'back';
+  view: 'front' | 'back' | 'ribs' | 'scroll';
   isCritical?: boolean;
   displayNumber?: number;
+  repairHours?: number;
 }
 
 export interface CrackAnnotation extends BaseAnnotation {
@@ -48,4 +49,5 @@ export interface ViolinState {
   annotations: Annotation[];
   nextNumber: number;
   instrumentName: string;
+  luthierName: string;
 }

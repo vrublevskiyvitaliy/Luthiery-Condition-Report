@@ -41,9 +41,10 @@ export default function App() {
     annotations: [],
     nextNumber: 1,
     instrumentName: 'Messiah Stradivarius',
+    luthierName: 'Vitaliy Vrublevskiy',
   });
-  const [currentView, setCurrentView] = useState<'front' | 'back'>('front');
-  const [currentTool, setCurrentTool] = useState<string>('crack');
+  const [currentView, setCurrentView] = useState<'front' | 'back' | 'ribs' | 'scroll'>('front');
+  const [currentTool, setCurrentTool] = useState<string>('none');
   const [currentColor, setCurrentColor] = useState<string>(COLORS[0].value);
   const [currentWidth, setCurrentWidth] = useState<number>(3);
   const [currentHatch, setCurrentHatch] = useState<string>('none');
@@ -136,14 +137,16 @@ export default function App() {
 
   const allAnnotationsWithNumbers = useMemo(() => {
     const numbered = state.annotations
-      .filter(ann => ann.type !== 'text' && ann.type !== 'arrow')
+      .filter(ann => ann.type !== 'text')
       .sort((a, b) => {
         const getPriority = (ann: Annotation) => {
           if (ann.isCritical && ann.type === 'crack') return 1;
           if (ann.isCritical && ann.type === 'area') return 2;
-          if (!ann.isCritical && ann.type === 'crack') return 3;
-          if (!ann.isCritical && ann.type === 'area') return 4;
-          return 5;
+          if (ann.isCritical && ann.type === 'arrow') return 3;
+          if (!ann.isCritical && ann.type === 'crack') return 4;
+          if (!ann.isCritical && ann.type === 'area') return 5;
+          if (!ann.isCritical && ann.type === 'arrow') return 6;
+          return 7;
         };
         
         const pA = getPriority(a);
@@ -185,7 +188,7 @@ export default function App() {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const viewsToCapture: ('front' | 'back')[] = ['front', 'back'];
+    const viewsToCapture: ('front' | 'back' | 'ribs' | 'scroll')[] = ['front', 'back', 'ribs', 'scroll'];
     
     // Add Page 1: Metadata & Registry
     doc.setFillColor(228, 227, 224); // --background: #E4E3E0
@@ -199,21 +202,26 @@ export default function App() {
     doc.setFont('times', 'italic');
     doc.setFontSize(14);
     doc.text('Condition Mapping Report', 20, 50);
-    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 60);
+    doc.text(`Luthier: ${state.luthierName}`, 20, 60);
+    doc.text(`Generated on: ${new Date().toLocaleDateString()}`, 20, 70);
     
     doc.setDrawColor(20, 20, 20);
     doc.setLineWidth(0.5);
-    doc.line(20, 65, pageWidth - 20, 65);
+    doc.line(20, 75, pageWidth - 20, 75);
 
     doc.setFont('times', 'italic');
     doc.setFontSize(16);
-    doc.text('Condition Registry', 20, 80);
+    doc.text('Condition Registry', 20, 90);
     
-    let yPos = 95;
+    let yPos = 105;
     numberedAnnotations.forEach((ann) => {
       if (yPos > 270) {
         doc.addPage();
-        yPos = 20;
+        doc.setFont('times', 'italic');
+        doc.setFontSize(10);
+        doc.setTextColor(100, 100, 100);
+        doc.text(`${state.instrumentName.toUpperCase()} - ${state.luthierName}`, 10, 10);
+        yPos = 25;
       }
       
       doc.setFontSize(10);
@@ -227,11 +235,14 @@ export default function App() {
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
-      const noteText = ann.notes || 'No specific details provided.';
-      const splitNotes = doc.splitTextToSize(noteText, pageWidth - 50);
-      doc.text(splitNotes, 30, yPos + (ann.isCritical ? 10 : 5));
-      
-      yPos += (ann.isCritical ? 15 : 10) + (splitNotes.length * 4);
+      const noteText = ann.notes || '';
+      if (noteText) {
+        const splitNotes = doc.splitTextToSize(noteText, pageWidth - 50);
+        doc.text(splitNotes, 30, yPos + (ann.isCritical ? 10 : 5));
+        yPos += (ann.isCritical ? 15 : 10) + (splitNotes.length * 4);
+      } else {
+        yPos += (ann.isCritical ? 12 : 8);
+      }
       
       doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.1);
@@ -250,19 +261,30 @@ export default function App() {
       await new Promise(resolve => setTimeout(resolve, 1000));
       
       let imgData;
-      const cropX = containerSize.width * 0.25;
-      const cropY = containerSize.height * 0.02;
-      const cropW = containerSize.width * 0.5;
-      const cropH = containerSize.height * 0.96;
+      let finalCropW = containerSize.width * 0.92;
+      let finalCropH = containerSize.height * 0.96;
 
       if (stageRef.current) {
+        // Find the actual bounds of the instrument and annotations
+        const box = stageRef.current.getClientRect({ skipTransform: false });
+        
+        // Add a small padding to the box
+        const padding = 5;
+        const finalX = Math.max(0, box.x - padding);
+        const finalY = Math.max(0, box.y - padding);
+        const finalW = Math.min(containerSize.width - finalX, box.width + padding * 2);
+        const finalH = Math.min(containerSize.height - finalY, box.height + padding * 2);
+
         imgData = stageRef.current.toDataURL({ 
           pixelRatio: 3,
-          x: cropX,
-          y: cropY,
-          width: cropW,
-          height: cropH
+          x: finalX,
+          y: finalY,
+          width: finalW,
+          height: finalH
         });
+        
+        finalCropW = finalW;
+        finalCropH = finalH;
       } else {
         const canvas = await html2canvas(canvasContainerRef.current!);
         imgData = canvas.toDataURL('image/png');
@@ -273,20 +295,29 @@ export default function App() {
       doc.rect(0, 0, pageWidth, pageHeight, 'F');
       
       doc.setFont('times', 'italic');
-      doc.setFontSize(12);
-      doc.text(`${view.toUpperCase()} VIEW`, 20, 15);
+      doc.setFontSize(10);
+      doc.setTextColor(100, 100, 100);
+      doc.text(`${state.instrumentName.toUpperCase()} - ${state.luthierName}`, 10, 10);
       
-      const imgWidth = pageWidth - 40;
-      const canvasAspectRatio = cropH / cropW;
-      const imgHeight = imgWidth * canvasAspectRatio;
+      doc.setFontSize(14);
+      doc.setTextColor(20, 20, 20);
+      doc.text(`${view.toUpperCase()} VIEW`, pageWidth / 2, 12, { align: 'center' });
       
-      let yOffset = 20;
-      if (imgHeight > pageHeight - 40) {
-        const scale = (pageHeight - 40) / imgHeight;
-        doc.addImage(imgData, 'PNG', 20, yOffset, imgWidth * scale, pageHeight - 40);
-      } else {
-        doc.addImage(imgData, 'PNG', 20, yOffset, imgWidth, imgHeight);
+      const margin = 5;
+      const availableWidth = pageWidth - (margin * 2);
+      const availableHeight = pageHeight - 20; // Space for title and bottom margin
+      
+      const canvasAspectRatio = finalCropH / finalCropW;
+      
+      let finalWidth = availableWidth;
+      let finalHeight = availableWidth * canvasAspectRatio;
+      
+      if (finalHeight > availableHeight) {
+        finalHeight = availableHeight;
+        finalWidth = finalHeight / canvasAspectRatio;
       }
+      
+      doc.addImage(imgData, 'PNG', (pageWidth - finalWidth) / 2, 16, finalWidth, finalHeight);
     }
     setIsExporting(false);
 
@@ -312,14 +343,24 @@ export default function App() {
               value={state.instrumentName}
               onChange={(e) => setState(prev => ({ ...prev, instrumentName: e.target.value }))}
               className="h-8 text-[11px] font-bold tracking-wider border-border bg-stone-200/30 rounded-none"
-              placeholder="Client Name / Violin Name"
+              placeholder="Violin Name"
+            />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label className="font-serif italic text-[11px] uppercase opacity-60">Luthier Name</Label>
+            <Input 
+              value={state.luthierName}
+              onChange={(e) => setState(prev => ({ ...prev, luthierName: e.target.value }))}
+              className="h-8 text-[11px] font-bold tracking-wider border-border bg-stone-200/30 rounded-none"
+              placeholder="Luthier Name"
             />
           </div>
 
           <div className="flex flex-col gap-2">
             <Label className="font-serif italic text-[11px] uppercase opacity-60">Zoom & Navigation</Label>
             <div className="flex flex-col gap-2">
-              <div className="flex gap-2 bg-stone-200/30 border border-border p-1 shadow-sm">
+              <div className="flex gap-2 bg-stone-200/30 border border-border p-1 shadow-sm justify-center items-center">
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(z => Math.max(0.5, z - 0.2))}>
                   <Minus className="w-4 h-4" />
                 </Button>
@@ -328,16 +369,6 @@ export default function App() {
                 </div>
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setZoom(z => Math.min(5, z + 0.2))}>
                   <Plus className="w-4 h-4" />
-                </Button>
-                <Separator orientation="vertical" className="h-4 my-auto mx-1" />
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  className={`h-7 w-7 ${currentTool === 'none' ? 'bg-primary/10 text-primary' : ''}`} 
-                  onClick={() => setCurrentTool('none')}
-                  title="Pan Tool"
-                >
-                  <Layers className="w-4 h-4" />
                 </Button>
               </div>
               <Button 
@@ -353,24 +384,34 @@ export default function App() {
 
           <div className="flex flex-col gap-2">
             <div className="font-serif italic text-[11px] uppercase opacity-60">Sides</div>
-            <Tabs value={currentView} onValueChange={(v) => setCurrentView(v as any)}>
-              <TabsList className="w-full bg-stone-200/50 p-1 h-8 rounded-none border border-border">
-                {VIEWS.map(v => (
-                  <TabsTrigger 
-                    key={v.id} 
-                    value={v.id} 
-                    className="flex-1 text-[9px] uppercase tracking-wider font-bold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground rounded-none"
-                  >
-                    {v.name}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </Tabs>
+            <div className="grid grid-cols-2 gap-1 p-1 bg-stone-200/30 border border-border">
+              {VIEWS.map(v => (
+                <button
+                  key={v.id}
+                  onClick={() => setCurrentView(v.id as any)}
+                  className={`h-8 text-[10px] uppercase font-bold transition-all flex items-center justify-center border border-transparent ${
+                    currentView === v.id 
+                      ? 'bg-primary text-primary-foreground' 
+                      : 'hover:bg-stone-300/50 text-foreground/70'
+                  }`}
+                >
+                  {v.name}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="flex flex-col gap-2">
             <div className="font-serif italic text-[11px] uppercase opacity-60">Mapping Tools</div>
             <div className="flex flex-col gap-2">
+              <Button 
+                variant={currentTool === 'none' ? 'default' : 'outline'} 
+                size="sm"
+                onClick={() => setCurrentTool('none')}
+                className={`justify-start gap-2 text-[13px] h-9 rounded-none border-border ${currentTool === 'none' ? 'bg-primary text-primary-foreground' : 'bg-card'}`}
+              >
+                <Layers className="w-3.5 h-3.5" /> Pan & Select
+              </Button>
               <Button 
                 variant={currentTool === 'crack' ? 'default' : 'outline'} 
                 size="sm"
@@ -575,12 +616,23 @@ export default function App() {
                           </Button>
                         </div>
                         <div className="text-[10px] text-stone-500 uppercase font-medium">{ann.view} view</div>
-                        <Input
-                          placeholder="Condition details..."
-                          className="text-[11px] border-none bg-stone-50/50 focus-visible:ring-0 h-7 px-2 rounded-none mt-1"
-                          value={ann.notes || ''}
-                          onChange={(e) => updateAnnotationNotes(ann.id, e.target.value)}
-                        />
+                        <div className="flex gap-2 mt-1">
+                          <Input
+                            placeholder="Condition details..."
+                            className="text-[11px] border-none bg-stone-50/50 focus-visible:ring-0 h-7 px-2 rounded-none flex-1"
+                            value={ann.notes || ''}
+                            onChange={(e) => updateAnnotationNotes(ann.id, e.target.value)}
+                          />
+                          <div className="flex items-center gap-1 bg-stone-50/50 px-1 border border-stone-100">
+                            <Label className="text-[9px] uppercase font-bold opacity-40">Hrs</Label>
+                            <Input
+                              type="number"
+                              className="text-[11px] border-none bg-transparent focus-visible:ring-0 h-6 w-10 px-1 rounded-none text-center"
+                              value={ann.repairHours || ''}
+                              onChange={(e) => updateAnnotation(ann.id, { repairHours: parseFloat(e.target.value) || 0 })}
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   ))
