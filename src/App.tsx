@@ -37,6 +37,8 @@ import LuthierCanvas from './components/LuthierCanvas';
 import { jsPDF } from 'jspdf';
 import html2canvas from 'html2canvas';
 
+const DEVELOPER_INFO = "Developed by Vitalii Vrublevskyi (vitalii.vrublevskyi@gmail.com)";
+
 export default function App() {
   const [state, setState] = useState<ViolinState>({
     annotations: [],
@@ -284,6 +286,12 @@ export default function App() {
     doc.setFillColor(228, 227, 224); // --background: #E4E3E0
     doc.rect(0, 0, pageWidth, pageHeight, 'F');
     
+    // Add developer info at the bottom of page 1
+    doc.setFont('times', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(DEVELOPER_INFO, pageWidth - 10, pageHeight - 5, { align: 'right' });
+    
     doc.setTextColor(20, 20, 20); // --foreground: #141414
     doc.setFont('courier', 'bold');
     doc.setFontSize(24);
@@ -311,6 +319,12 @@ export default function App() {
         doc.setFontSize(10);
         doc.setTextColor(100, 100, 100);
         doc.text(`${state.instrumentName.toUpperCase()} - ${state.luthierName}`, 10, 10);
+        
+        doc.setFont('times', 'italic');
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(DEVELOPER_INFO, pageWidth - 10, pageHeight - 5, { align: 'right' });
+        
         yPos = 25;
       }
       
@@ -393,6 +407,11 @@ export default function App() {
       doc.setTextColor(100, 100, 100);
       doc.text(`${state.instrumentName.toUpperCase()} - ${state.luthierName}`, 10, 10);
       
+      doc.setFont('times', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(DEVELOPER_INFO, pageWidth - 10, pageHeight - 5, { align: 'right' });
+      
       doc.setFontSize(14);
       doc.setTextColor(20, 20, 20);
       doc.text(`${viewLabel.toUpperCase()}`, pageWidth / 2, 12, { align: 'center' });
@@ -428,6 +447,11 @@ export default function App() {
     doc.setFont('helvetica', 'italic');
     doc.setTextColor(120, 110, 100);
     doc.text('Workshop Use Only - Confidential', pageWidth / 2, 32, { align: 'center' });
+    
+    doc.setFont('times', 'italic');
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(DEVELOPER_INFO, pageWidth - 10, pageHeight - 5, { align: 'right' });
     
     let summaryY = 45;
     
@@ -1041,7 +1065,12 @@ export default function App() {
 
         {/* Footer */}
         <footer className="col-span-3 border-t border-border flex justify-between items-center px-5 text-[11px] bg-card">
-          <div className="opacity-60">Drafting Mode: Enabled / Coordinate System: mm / Grid: Off</div>
+          <div className="flex items-center gap-4">
+            <div className="opacity-60">Drafting Mode: Enabled / Coordinate System: mm / Grid: Off</div>
+            <div className="text-stone-400 italic text-[10px] border-l border-stone-200 pl-4">
+              {DEVELOPER_INFO}
+            </div>
+          </div>
           <div className="flex gap-2">
             <input
               type="file"
