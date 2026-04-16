@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Stage, Layer, Line, Text, Arrow, Image as KonvaImage, Group, Rect, Transformer } from 'react-konva';
 import { Annotation, Point } from '@/src/types';
+import { regularizePath, regularizeArea } from '../lib/geometry';
 import useImage from 'use-image';
 import frontSvg from '../front.svg';
 import backSvg from '../back.svg';
@@ -24,6 +25,8 @@ interface LuthierCanvasProps {
   onTextToolClick?: (x: number, y: number) => void;
   onUpdateAnnotation?: (id: string, updates: Partial<Annotation>) => void;
   onEditText?: (ann: Annotation) => void;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
   hideGuides?: boolean;
 }
 
@@ -44,11 +47,12 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
   onTextToolClick,
   onUpdateAnnotation,
   onEditText,
+  selectedId,
+  onSelect,
   hideGuides,
 }, ref) => {
   const [isDrawing, setIsDrawing] = useState(false);
   const [points, setPoints] = useState<number[]>([]);
-  const [selectedId, setSelectedId] = useState<string | null>(null);
   const transformerRef = useRef<any>(null);
 
   // Attach transformer to selected node
@@ -56,13 +60,19 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
     if (selectedId && transformerRef.current) {
       const stage = ref && 'current' in ref ? (ref.current as any) : null;
       if (stage) {
+        const ann = annotations.find(a => a.id === selectedId);
         const node = stage.findOne('#' + selectedId);
-        if (node) {
+        // Only attach transformer to text nodes
+        if (node && ann?.type === 'text') {
           transformerRef.current.nodes([node]);
           transformerRef.current.forceUpdate();
           transformerRef.current.getLayer().batchDraw();
+        } else {
+          transformerRef.current.nodes([]);
         }
       }
+    } else if (transformerRef.current) {
+      transformerRef.current.nodes([]);
     }
   }, [selectedId, ref, annotations]);
 
@@ -75,7 +85,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
         container.style.cursor = 'grab';
       } else {
         container.style.cursor = 'crosshair';
-        setSelectedId(null);
+        onSelect(null);
       }
     }
   }, [currentTool, ref]);
@@ -207,7 +217,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
       const lastY = points[points.length - 1];
       const dist = Math.sqrt(Math.pow(pos.x - lastX, 2) + Math.pow(pos.y - lastY, 2));
       
-      if (dist > 5) {
+      if (dist > 3) { // Reduced distance for more detail while still filtering noise
         setPoints([...points, pos.x, pos.y]);
       }
     } else if (currentTool === 'arrow') {
@@ -235,6 +245,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
         number: 0,
         points,
         width: currentWidth,
+        tension: 0,
       });
     } else if (currentTool === 'area') {
       // For area, we close the path
@@ -247,6 +258,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
         number: 0,
         points: closedPoints,
         hatchPattern: currentHatch as any,
+        tension: 0,
       });
     } else if (currentTool === 'arrow') {
       onAddAnnotation({
@@ -265,9 +277,8 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
   const renderAnnotation = (ann: Annotation) => {
     if (ann.view !== view) return null;
 
-    const markerX = ann.type === 'text' ? ann.x : ann.points[0];
-    const markerY = ann.type === 'text' ? ann.y : ann.points[1];
     const displayNum = ann.displayNumber || ann.number;
+    const smoothing = ann.tension || 0; // 0 (raw) to 1 (regularized)
 
     const handleMouseEnter = (e: any) => {
       if (currentTool === 'none') {
@@ -283,8 +294,17 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
       }
     };
 
-    const MarkerPin = ({ num, x, y, color }: { num: number; x: number; y: number; color: string }) => (
-      <Group x={x} y={y}>
+    const MarkerPin = ({ num, x, y, color, id }: { num: number; x: number; y: number; color: string; id: string }) => (
+      <Group 
+        x={x} 
+        y={y}
+        onClick={(e) => {
+          if (currentTool === 'none') {
+            e.cancelBubble = true;
+            onSelect(id);
+          }
+        }}
+      >
         <Rect
           width={18}
           height={18}
@@ -309,39 +329,88 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
 
     switch (ann.type) {
       case 'crack':
+        const crackPoints = regularizePath(ann.points, smoothing);
+        const markerX = crackPoints[0];
+        const markerY = crackPoints[1];
+
         return (
           <Group 
             key={ann.id}
+            id={ann.id}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            draggable={currentTool === 'none'}
+            onClick={(e) => {
+              if (currentTool === 'none') {
+                e.cancelBubble = true;
+                onSelect(ann.id);
+              }
+            }}
+            onDragEnd={(e) => {
+              if (onUpdateAnnotation) {
+                // For lines, we update all points by the drag offset
+                const dx = e.target.x();
+                const dy = e.target.y();
+                const newPoints = ann.points.map((p, i) => i % 2 === 0 ? p + dx : p + dy);
+                onUpdateAnnotation(ann.id, { points: newPoints });
+                e.target.x(0);
+                e.target.y(0);
+              }
+            }}
           >
-            <Line
-              points={ann.points}
+             <Line
+              points={crackPoints}
               stroke={ann.color}
               strokeWidth={ann.width}
-              tension={0.8}
+              tension={0} // Using manual regularization
               lineCap="round"
               lineJoin="round"
+              shadowColor={selectedId === ann.id ? ann.color : undefined}
+              shadowBlur={selectedId === ann.id ? 8 : 0}
             />
-            <MarkerPin num={displayNum} x={markerX} y={markerY} color={ann.color} />
+            <MarkerPin num={displayNum} x={markerX} y={markerY} color={ann.color} id={ann.id} />
           </Group>
         );
       case 'area':
+        const areaPoints = regularizeArea(ann.points, smoothing);
+        const areaMarkerX = areaPoints[0];
+        const areaMarkerY = areaPoints[1];
+
         return (
           <Group 
             key={ann.id}
+            id={ann.id}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            draggable={currentTool === 'none'}
+            onClick={(e) => {
+              if (currentTool === 'none') {
+                e.cancelBubble = true;
+                onSelect(ann.id);
+              }
+            }}
+            onDragEnd={(e) => {
+              if (onUpdateAnnotation) {
+                const dx = e.target.x();
+                const dy = e.target.y();
+                const newPoints = ann.points.map((p, i) => i % 2 === 0 ? p + dx : p + dy);
+                onUpdateAnnotation(ann.id, { points: newPoints });
+                e.target.x(0);
+                e.target.y(0);
+              }
+            }}
           >
-            <Line
-              points={ann.points}
+             <Line
+              points={areaPoints}
               stroke={ann.color}
               strokeWidth={2}
               fill={ann.color + '33'} // Transparent fill
               closed
-              tension={0.8}
+              tension={0} // Manual regularization
+              shadowColor={selectedId === ann.id ? ann.color : undefined}
+              shadowBlur={selectedId === ann.id ? 8 : 0}
             />
-            <MarkerPin num={displayNum} x={markerX} y={markerY} color={ann.color} />
+            <MarkerPin num={displayNum} x={areaMarkerX} y={areaMarkerY} color={ann.color} id={ann.id} />
           </Group>
         );
       case 'text':
@@ -410,7 +479,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
             onClick={(e) => {
               if (currentTool === 'none') {
                 e.cancelBubble = true;
-                setSelectedId(ann.id);
+                onSelect(ann.id);
               }
             }}
             onDblClick={() => {
@@ -464,7 +533,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               pointerLength={10}
               pointerWidth={10}
             />
-            <MarkerPin num={arrowDisplayNum} x={arrowMarkerX} y={arrowMarkerY} color={ann.color} />
+            <MarkerPin num={arrowDisplayNum} x={arrowMarkerX} y={arrowMarkerY} color={ann.color} id={ann.id} />
           </Group>
         );
       default:
@@ -496,7 +565,7 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
         }}
         onClick={(e) => {
           if (e.target === e.currentTarget) {
-            setSelectedId(null);
+            onSelect(null);
           }
         }}
         draggable={currentTool === 'none'}

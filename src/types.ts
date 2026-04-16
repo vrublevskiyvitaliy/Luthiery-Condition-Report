@@ -15,6 +15,7 @@ export interface BaseAnnotation {
   isCritical?: boolean;
   displayNumber?: number;
   repairHours?: number;
+  tension?: number; // 0 for straight lines, 1 for super smooth
 }
 
 export interface CrackAnnotation extends BaseAnnotation {

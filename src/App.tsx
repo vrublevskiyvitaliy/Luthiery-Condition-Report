@@ -58,6 +58,12 @@ export default function App() {
   const stageRef = useRef<any>(null);
 
   const [containerSize, setContainerSize] = useState({ width: 800, height: 1000 });
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  const selectedAnnotation = useMemo(() => 
+    state.annotations.find(a => a.id === selectedId), 
+    [state.annotations, selectedId]
+  );
 
   const handleTextSubmit = () => {
     if (pendingText.trim()) {
@@ -448,15 +454,28 @@ export default function App() {
           </div>
 
           <div className="flex flex-col gap-4">
-            <div className="font-serif italic text-[11px] uppercase opacity-60">Properties</div>
+            <div className="font-serif italic text-[11px] uppercase opacity-60">
+              {selectedAnnotation ? `Editing Annotation #${selectedAnnotation.displayNumber || selectedAnnotation.number}` : 'Global Properties'}
+            </div>
             
             <div className="space-y-2">
+              <Label className="text-[10px] uppercase font-bold opacity-70">Color</Label>
               <div className="flex flex-wrap gap-1">
                 {COLORS.map(c => (
                   <button
                     key={c.value}
-                    onClick={() => setCurrentColor(c.value)}
-                    className={`w-6 h-6 border transition-all ${currentColor === c.value ? 'border-primary scale-110 ring-1 ring-primary' : 'border-border opacity-60 hover:opacity-100'}`}
+                    onClick={() => {
+                      if (selectedAnnotation) {
+                        updateAnnotation(selectedAnnotation.id, { color: c.value });
+                      } else {
+                        setCurrentColor(c.value);
+                      }
+                    }}
+                    className={`w-6 h-6 border transition-all ${
+                      (selectedAnnotation ? selectedAnnotation.color === c.value : currentColor === c.value) 
+                        ? 'border-primary scale-110 ring-1 ring-primary' 
+                        : 'border-border opacity-60 hover:opacity-100'
+                    }`}
                     style={{ backgroundColor: c.value }}
                     title={c.name}
                   />
@@ -464,17 +483,27 @@ export default function App() {
               </div>
             </div>
 
-            {currentTool === 'crack' && (
+            {((selectedAnnotation && selectedAnnotation.type === 'crack') || (!selectedAnnotation && currentTool === 'crack')) && (
               <div className="space-y-2">
                 <Label className="text-[10px] uppercase font-bold opacity-70">Width</Label>
                 <div className="flex flex-col gap-1">
                   {WIDTH_OPTIONS.map(opt => (
                     <Button
                       key={opt.id}
-                      variant={currentWidth === opt.value ? 'default' : 'outline'}
+                      variant={(selectedAnnotation?.type === 'crack' && selectedAnnotation.width === opt.value || (!selectedAnnotation && currentWidth === opt.value)) ? 'default' : 'outline'}
                       size="sm"
-                      onClick={() => setCurrentWidth(opt.value)}
-                      className={`h-7 text-[10px] uppercase font-bold rounded-none border-border ${currentWidth === opt.value ? 'bg-primary text-primary-foreground' : 'bg-card'}`}
+                      onClick={() => {
+                        if (selectedAnnotation?.type === 'crack') {
+                          updateAnnotation(selectedAnnotation.id, { width: opt.value });
+                        } else {
+                          setCurrentWidth(opt.value);
+                        }
+                      }}
+                      className={`h-7 text-[10px] uppercase font-bold rounded-none border-border ${
+                        (selectedAnnotation?.type === 'crack' && selectedAnnotation.width === opt.value || (!selectedAnnotation && currentWidth === opt.value)) 
+                          ? 'bg-primary text-primary-foreground' 
+                          : 'bg-card'
+                      }`}
                     >
                       {opt.name}
                     </Button>
@@ -482,8 +511,44 @@ export default function App() {
                 </div>
               </div>
             )}
-
-            {/* Area hatch options removed - always solid */}
+            
+            {selectedAnnotation && (selectedAnnotation.type === 'crack' || selectedAnnotation.type === 'area') && (
+              <div className="space-y-3 pt-2">
+                <div className="flex justify-between items-center">
+                  <Label className="text-[10px] uppercase font-bold opacity-70">Curvature / Smoothing</Label>
+                  <span className="text-[10px] font-mono opacity-60">
+                    {Math.round((selectedAnnotation.tension ?? 0) * 100)}%
+                  </span>
+                </div>
+                <Slider 
+                  value={[ (selectedAnnotation.tension ?? 0) * 100 ]}
+                  onValueChange={(vals: any) => {
+                    const value = Array.isArray(vals) ? vals[0] : vals;
+                    const nextVal = typeof value === 'number' ? value / 100 : 0;
+                    if (!isNaN(nextVal)) {
+                      // Triggering a points copy forces the Canvas to re-evaluate the geometry
+                      updateAnnotation(selectedAnnotation.id, { 
+                        tension: nextVal,
+                        points: [...selectedAnnotation.points] 
+                      });
+                    }
+                  }}
+                  min={0}
+                  max={100}
+                  step={1}
+                />
+              </div>
+            )}
+            
+            {selectedAnnotation && (
+              <Button 
+                variant="ghost" 
+                className="text-[10px] uppercase font-bold h-7 w-full text-stone-400 hover:text-stone-600"
+                onClick={() => setSelectedId(null)}
+              >
+                Done Editing
+              </Button>
+            )}
           </div>
 
           <div className="mt-auto pt-6 flex flex-col gap-2">
@@ -513,6 +578,8 @@ export default function App() {
               onPositionChange={setPosition}
               onTextToolClick={(x, y) => setTextModal({ x, y, open: true, id: undefined })}
               onUpdateAnnotation={updateAnnotation}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
               onEditText={(ann) => {
                 if (ann.type === 'text') {
                   setPendingText(ann.text);
