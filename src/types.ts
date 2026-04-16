@@ -5,13 +5,23 @@ export interface Point {
   y: number;
 }
 
+export type ViewType = 'front' | 'back' | 'ribs' | 'scroll';
+
+export interface ViewDefinition {
+  id: string;
+  type: ViewType;
+  isInternal: boolean;
+  order: number;
+  name?: string;
+}
+
 export interface BaseAnnotation {
   id: string;
   type: AnnotationType;
   color: string;
   number: number;
   notes?: string;
-  view: 'front' | 'back' | 'ribs' | 'scroll';
+  view: string; // View ID
   isCritical?: boolean;
   displayNumber?: number;
   repairHours?: number;
@@ -48,6 +58,7 @@ export type Annotation = CrackAnnotation | AreaAnnotation | TextAnnotation | Arr
 
 export interface ViolinState {
   annotations: Annotation[];
+  views: ViewDefinition[];
   nextNumber: number;
   instrumentName: string;
   luthierName: string;

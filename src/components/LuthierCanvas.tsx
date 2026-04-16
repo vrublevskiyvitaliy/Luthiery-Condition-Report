@@ -15,7 +15,9 @@ interface LuthierCanvasProps {
   currentColor: string;
   currentWidth: number;
   currentHatch: string;
-  view: 'front' | 'back' | 'ribs' | 'scroll';
+  view: string; // View ID
+  viewType: 'front' | 'back' | 'ribs' | 'scroll';
+  isInternal?: boolean;
   width: number;
   height: number;
   scale: number;
@@ -38,6 +40,8 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
   currentWidth,
   currentHatch,
   view,
+  viewType,
+  isInternal,
   width,
   height,
   scale,
@@ -97,10 +101,10 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
   const [scrollImage] = useImage(scrollSvg);
 
   const currentImage = 
-    view === 'front' ? frontImage : 
-    view === 'back' ? backImage : 
-    view === 'ribs' ? ribsImage : 
-    view === 'scroll' ? scrollImage : 
+    viewType === 'front' ? frontImage : 
+    viewType === 'back' ? backImage : 
+    viewType === 'ribs' ? ribsImage : 
+    viewType === 'scroll' ? scrollImage : 
     null;
 
   const handleWheel = (e: any) => {
@@ -365,8 +369,8 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               tension={0} // Using manual regularization
               lineCap="round"
               lineJoin="round"
-              shadowColor={selectedId === ann.id ? ann.color : undefined}
-              shadowBlur={selectedId === ann.id ? 8 : 0}
+              shadowColor={(!hideGuides && selectedId === ann.id) ? ann.color : undefined}
+              shadowBlur={(!hideGuides && selectedId === ann.id) ? 8 : 0}
             />
             <MarkerPin num={displayNum} x={markerX} y={markerY} color={ann.color} id={ann.id} />
           </Group>
@@ -407,8 +411,8 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
               fill={ann.color + '33'} // Transparent fill
               closed
               tension={0} // Manual regularization
-              shadowColor={selectedId === ann.id ? ann.color : undefined}
-              shadowBlur={selectedId === ann.id ? 8 : 0}
+              shadowColor={(!hideGuides && selectedId === ann.id) ? ann.color : undefined}
+              shadowBlur={(!hideGuides && selectedId === ann.id) ? 8 : 0}
             />
             <MarkerPin num={displayNum} x={areaMarkerX} y={areaMarkerY} color={ann.color} id={ann.id} />
           </Group>
@@ -588,14 +592,40 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
 
           {/* Background Template */}
           {currentImage && (
-            <KonvaImage
-              image={currentImage}
-              x={imgDim.x}
-              y={imgDim.y}
-              width={imgDim.width}
-              height={imgDim.height}
-              opacity={0.6}
-            />
+            <Group>
+              <KonvaImage
+                image={currentImage}
+                x={imgDim.x}
+                y={imgDim.y}
+                width={imgDim.width}
+                height={imgDim.height}
+                opacity={0.6}
+              />
+              {isInternal && (
+                <Group listening={false}>
+                  <Rect 
+                    x={imgDim.x} 
+                    y={imgDim.y} 
+                    width={imgDim.width} 
+                    height={imgDim.height} 
+                    fill="#fb923c"
+                    opacity={0.08}
+                  />
+                  <Text 
+                    text="INTERNAL VIEW"
+                    x={imgDim.x}
+                    y={imgDim.y + imgDim.height - 30}
+                    width={imgDim.width}
+                    fontSize={18}
+                    fontFamily="monospace"
+                    fontStyle="bold"
+                    fill="#fb923c"
+                    align="center"
+                    opacity={0.8}
+                  />
+                </Group>
+              )}
+            </Group>
           )}
           
           {/* Existing Annotations */}

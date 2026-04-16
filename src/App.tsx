@@ -30,7 +30,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
-import { Annotation, ViolinState } from './types';
+import { Annotation, ViolinState, ViewDefinition, ViewType } from './types';
 import { COLORS, HATCH_PATTERNS, VIEWS, TOOL_TYPES, WIDTH_OPTIONS } from './constants';
 import LuthierCanvas from './components/LuthierCanvas';
 import { jsPDF } from 'jspdf';
@@ -39,11 +39,17 @@ import html2canvas from 'html2canvas';
 export default function App() {
   const [state, setState] = useState<ViolinState>({
     annotations: [],
+    views: [
+      { id: 'view-front-1', type: 'front', isInternal: false, order: 1 },
+      { id: 'view-back-1', type: 'back', isInternal: false, order: 2 },
+      { id: 'view-ribs-1', type: 'ribs', isInternal: false, order: 3 },
+      { id: 'view-scroll-1', type: 'scroll', isInternal: false, order: 4 },
+    ],
     nextNumber: 1,
     instrumentName: 'Messiah Stradivarius',
     luthierName: 'Vitaliy Vrublevskiy',
   });
-  const [currentView, setCurrentView] = useState<'front' | 'back' | 'ribs' | 'scroll'>('front');
+  const [currentView, setCurrentView] = useState<string>('view-front-1');
   const [currentTool, setCurrentTool] = useState<string>('none');
   const [currentColor, setCurrentColor] = useState<string>(COLORS[0].value);
   const [currentWidth, setCurrentWidth] = useState<number>(3);
@@ -54,6 +60,8 @@ export default function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [textModal, setTextModal] = useState<{ x: number, y: number, open: boolean, id?: string }>({ x: 0, y: 0, open: false });
   const [pendingText, setPendingText] = useState('');
+  const [editingViewId, setEditingViewId] = useState<string | null>(null);
+  const [editingViewName, setEditingViewName] = useState('');
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
 
@@ -63,6 +71,80 @@ export default function App() {
   const selectedAnnotation = useMemo(() => 
     state.annotations.find(a => a.id === selectedId), 
     [state.annotations, selectedId]
+  );
+
+  const getViewName = useCallback((view: ViewDefinition, views: ViewDefinition[]) => {
+    if (view.name) return view.name;
+
+    const typeViews = views.filter(v => v.type === view.type);
+    const typeIndex = typeViews.findIndex(v => v.id === view.id) + 1;
+    const baseName = view.type.charAt(0).toUpperCase() + view.type.slice(1);
+    
+    let name = baseName;
+    if (typeViews.length > 1) {
+      name += ` ${typeIndex}`;
+    }
+    if (view.isInternal) {
+      name += ` Internal`;
+    }
+    return name;
+  }, []);
+
+  const updateViewName = (id: string, name: string) => {
+    setState(prev => ({
+      ...prev,
+      views: prev.views.map(v => v.id === id ? { ...v, name: name.trim() || undefined } : v)
+    }));
+    setEditingViewId(null);
+  };
+
+  const addView = (type: ViewType) => {
+    const id = `view-${type}-${Math.random().toString(36).substr(2, 9)}`;
+    const newView: ViewDefinition = {
+      id,
+      type,
+      isInternal: false,
+      order: state.views.length + 1
+    };
+    setState(prev => ({
+      ...prev,
+      views: [...prev.views, newView]
+    }));
+    setCurrentView(id);
+  };
+
+  const removeView = (id: string) => {
+    if (state.views.length <= 1) return;
+    setState(prev => ({
+      ...prev,
+      views: prev.views.filter(v => v.id !== id),
+      annotations: prev.annotations.filter(a => a.view !== id)
+    }));
+    if (currentView === id) {
+      setCurrentView(state.views.find(v => v.id !== id)?.id || '');
+    }
+  };
+
+  const toggleViewInternal = (id: string) => {
+    setState(prev => ({
+      ...prev,
+      views: prev.views.map(v => v.id === id ? { ...v, isInternal: !v.isInternal } : v)
+    }));
+  };
+
+  const sortedViews = useMemo(() => {
+    const orderMap: Record<string, number> = { front: 1, back: 2, ribs: 3, scroll: 4 };
+    return [...state.views].sort((a, b) => {
+      if (a.type !== b.type) {
+        return (orderMap[a.type] || 99) - (orderMap[b.type] || 99);
+      }
+      return a.order - b.order;
+    });
+  }, [state.views]);
+
+  const currentViewDef = useMemo(() => 
+    state.views.find(v => v.id === currentView) || state.views[0],
+    [state.views, currentView]
   );
 
   const handleTextSubmit = () => {
@@ -194,7 +276,7 @@ export default function App() {
     const doc = new jsPDF('p', 'mm', 'a4');
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const viewsToCapture: ('front' | 'back' | 'ribs' | 'scroll')[] = ['front', 'back', 'ribs', 'scroll'];
+    const viewsToCapture = sortedViews;
     
     // Add Page 1: Metadata & Registry
     doc.setFillColor(228, 227, 224); // --background: #E4E3E0
@@ -230,6 +312,9 @@ export default function App() {
         yPos = 25;
       }
       
+      const viewDef = state.views.find(v => v.id === ann.view);
+      const viewLabel = viewDef ? getViewName(viewDef, state.views) : 'Unknown View';
+
       doc.setFontSize(10);
       doc.setFont('courier', 'bold');
       doc.setTextColor(ann.isCritical ? 178 : 20, ann.isCritical ? 34 : 20, ann.isCritical ? 34 : 20);
@@ -237,7 +322,7 @@ export default function App() {
       
       doc.setTextColor(20, 20, 20);
       doc.setFont('helvetica', 'bold');
-      doc.text(`${ann.type.toUpperCase()} [${ann.view}]`, 30, yPos + (ann.isCritical ? 5 : 0));
+      doc.text(`${ann.type.toUpperCase()} [${viewLabel}]`, 30, yPos + (ann.isCritical ? 5 : 0));
       
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(9);
@@ -258,8 +343,9 @@ export default function App() {
 
     // Subsequent Pages: Canvas Views
     for (let i = 0; i < viewsToCapture.length; i++) {
-      const view = viewsToCapture[i];
-      setCurrentView(view);
+      const viewDef = viewsToCapture[i];
+      const viewLabel = getViewName(viewDef, state.views);
+      setCurrentView(viewDef.id);
       setZoom(1); // Reset zoom for export
       setPosition({ x: 0, y: 0 }); // Reset position for export
       
@@ -307,7 +393,7 @@ export default function App() {
       
       doc.setFontSize(14);
       doc.setTextColor(20, 20, 20);
-      doc.text(`${view.toUpperCase()} VIEW`, pageWidth / 2, 12, { align: 'center' });
+      doc.text(`${viewLabel.toUpperCase()}`, pageWidth / 2, 12, { align: 'center' });
       
       const margin = 5;
       const availableWidth = pageWidth - (margin * 2);
@@ -325,6 +411,111 @@ export default function App() {
       
       doc.addImage(imgData, 'PNG', (pageWidth - finalWidth) / 2, 16, finalWidth, finalHeight);
     }
+
+    // Add Internal Repair Summary Page (at the end)
+    doc.addPage();
+    doc.setFillColor(252, 252, 251);
+    doc.rect(0, 0, pageWidth, pageHeight, 'F');
+    
+    doc.setTextColor(20, 20, 20);
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(22);
+    doc.text('INTERNAL REPAIR SUMMARY', pageWidth / 2, 25, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(120, 110, 100);
+    doc.text('Workshop Use Only - Confidential', pageWidth / 2, 32, { align: 'center' });
+    
+    let summaryY = 45;
+    
+    sortedViews.forEach((view) => {
+      const viewAnnotations = numberedAnnotations.filter(ann => ann.view === view.id);
+      if (viewAnnotations.length === 0) return;
+      
+      if (summaryY > 250) {
+        doc.addPage();
+        summaryY = 30;
+      }
+      
+      const viewLabel = getViewName(view, state.views);
+      const viewTotalHours = viewAnnotations.reduce((sum, ann) => sum + (ann.repairHours || 0), 0);
+      
+      // Group Header
+      doc.setFillColor(235, 230, 225);
+      doc.rect(20, summaryY - 6, pageWidth - 40, 9, 'F');
+      doc.setTextColor(20, 20, 20);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(11);
+      doc.text(viewLabel.toUpperCase(), 25, summaryY);
+      doc.text(`${viewTotalHours.toFixed(1)} HRS`, pageWidth - 25, summaryY, { align: 'right' });
+      
+      summaryY += 10;
+      
+      // Table Header
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text('NO.', 25, summaryY);
+      doc.text('DESCRIPTION', 35, summaryY);
+      doc.text('NOTES', 80, summaryY);
+      doc.text('HOURS', pageWidth - 25, summaryY, { align: 'right' });
+      
+      summaryY += 3;
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.1);
+      doc.line(20, summaryY, pageWidth - 20, summaryY);
+      summaryY += 6;
+      
+      doc.setTextColor(20, 20, 20);
+      viewAnnotations.forEach((ann) => {
+        if (summaryY > 275) {
+          doc.addPage();
+          summaryY = 30;
+        }
+        
+        doc.setFont('courier', 'bold');
+        doc.setFontSize(9);
+        doc.text(ann.displayNumber.toString().padStart(2, '0'), 25, summaryY);
+        
+        doc.setFont('helvetica', 'bold');
+        doc.text(ann.type.toUpperCase(), 35, summaryY);
+        
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(8);
+        const notes = ann.notes || '-';
+        const splitNotes = doc.splitTextToSize(notes, pageWidth - 115);
+        doc.text(splitNotes, 80, summaryY);
+        
+        doc.setFont('courier', 'bold');
+        doc.text((ann.repairHours || 0).toFixed(1), pageWidth - 25, summaryY, { align: 'right' });
+        
+        summaryY += Math.max(7, splitNotes.length * 4);
+        
+        // Minor separator
+        doc.setDrawColor(240, 240, 240);
+        doc.line(25, summaryY - 2, pageWidth - 25, summaryY - 2);
+        summaryY += 1;
+      });
+      
+      summaryY += 8;
+    });
+
+    const grandTotal = numberedAnnotations.reduce((sum, ann) => sum + (ann.repairHours || 0), 0);
+    
+    if (summaryY > 260) {
+      doc.addPage();
+      summaryY = 40;
+    }
+    
+    doc.setDrawColor(20, 20, 20);
+    doc.setLineWidth(0.5);
+    doc.line(20, summaryY, pageWidth - 20, summaryY);
+    summaryY += 10;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(14);
+    doc.text(`TOTAL ESTIMATED LABOR: ${grandTotal.toFixed(1)} HOURS`, pageWidth - 20, summaryY, { align: 'right' });
+
     setIsExporting(false);
 
     doc.save(`${state.instrumentName.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.pdf`);
@@ -389,16 +580,108 @@ export default function App() {
           </div>
 
           <div className="flex flex-col gap-2">
-            <div className="font-serif italic text-[11px] uppercase opacity-60">Sides</div>
-            <div className="grid grid-cols-2 gap-1 p-1 bg-stone-200/30 border border-border">
+            <div className="flex justify-between items-center">
+              <div className="font-serif italic text-[11px] uppercase opacity-60">Mapping Sheets</div>
+              <Tooltip>
+                <TooltipTrigger>
+                  <Button variant="ghost" size="icon" className="h-5 w-5 opacity-40 hover:opacity-100" onClick={() => addView(currentViewDef.type)}>
+                    <Plus className="w-3 h-3" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Add another sheet of this side</TooltipContent>
+              </Tooltip>
+            </div>
+            
+            <div className="flex flex-col gap-1 max-h-[250px] overflow-y-auto pr-1">
+              {sortedViews.map(v => (
+                <div key={v.id} className="flex gap-1 group">
+                    {editingViewId === v.id ? (
+                      <div className="flex-1 flex gap-1">
+                        <Input
+                          autoFocus
+                          value={editingViewName}
+                          onChange={(e) => setEditingViewName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') updateViewName(v.id, editingViewName);
+                            if (e.key === 'Escape') setEditingViewId(null);
+                          }}
+                          className="h-8 text-[10px] uppercase font-bold px-2 py-0 border-primary focus-visible:ring-0"
+                        />
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-8 w-8 text-primary shadow-none"
+                          onClick={() => updateViewName(v.id, editingViewName)}
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setCurrentView(v.id)}
+                        onDoubleClick={() => {
+                          setEditingViewId(v.id);
+                          setEditingViewName(getViewName(v, state.views));
+                        }}
+                        className={`flex-1 h-8 text-[10px] uppercase font-bold transition-all flex items-center px-3 border border-stone-200/50 ${
+                          currentView === v.id 
+                            ? 'bg-primary text-primary-foreground border-primary' 
+                            : 'bg-stone-200/30 hover:bg-stone-300/50 text-foreground/70'
+                        }`}
+                      >
+                        <span className="flex-1 text-left truncate">{getViewName(v, state.views)}</span>
+                        {v.isInternal && (
+                          <span className="ml-2 text-[8px] bg-orange-500 text-white px-1 py-0.5 rounded-none leading-none">INT</span>
+                        )}
+                      </button>
+                    )}
+                  
+                  {currentView === v.id && editingViewId !== v.id && (
+                    <div className="flex gap-1">
+                      <Tooltip>
+                        <TooltipTrigger>
+                          <Button 
+                            variant="outline" 
+                            size="icon" 
+                            className={`h-8 w-8 rounded-none border-stone-200 ${v.isInternal ? 'bg-orange-100 text-orange-700' : ''}`}
+                            onClick={() => toggleViewInternal(v.id)}
+                          >
+                            <Layers className="w-3.5 h-3.5" />
+                          </Button>
+                        </TooltipTrigger>
+                        <TooltipContent>{v.isInternal ? 'Switch to External' : 'Switch to Internal'}</TooltipContent>
+                      </Tooltip>
+                      {state.views.filter(view => view.type === v.type).length > 1 && (
+                         <Button 
+                         variant="outline" 
+                         size="icon" 
+                         className="h-8 w-8 rounded-none border-stone-200 text-stone-300 hover:text-destructive"
+                         onClick={() => removeView(v.id)}
+                       >
+                         <Minus className="w-3.5 h-3.5" />
+                       </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            <Separator className="my-1 opacity-20" />
+            
+            <div className="grid grid-cols-2 gap-1 px-1">
               {VIEWS.map(v => (
                 <button
                   key={v.id}
-                  onClick={() => setCurrentView(v.id as any)}
-                  className={`h-8 text-[10px] uppercase font-bold transition-all flex items-center justify-center border border-transparent ${
-                    currentView === v.id 
-                      ? 'bg-primary text-primary-foreground' 
-                      : 'hover:bg-stone-300/50 text-foreground/70'
+                  onClick={() => {
+                    const existing = state.views.find(view => view.type === v.id);
+                    if (existing) setCurrentView(existing.id);
+                    else addView(v.id as any);
+                  }}
+                  className={`h-6 text-[9px] uppercase font-medium transition-all flex items-center justify-center border ${
+                    currentViewDef.type === v.id 
+                      ? 'bg-stone-400 text-white' 
+                      : 'border-stone-200 text-stone-500 hover:bg-stone-100'
                   }`}
                 >
                   {v.name}
@@ -566,6 +849,8 @@ export default function App() {
               width={containerSize.width}
               height={containerSize.height}
               view={currentView}
+              viewType={currentViewDef.type}
+              isInternal={currentViewDef.isInternal}
               annotations={allAnnotationsWithNumbers as any}
               onAddAnnotation={addAnnotation}
               currentTool={currentTool}
@@ -682,7 +967,9 @@ export default function App() {
                             <Trash2 className="w-3 h-3" />
                           </Button>
                         </div>
-                        <div className="text-[10px] text-stone-500 uppercase font-medium">{ann.view} view</div>
+                        <div className="text-[10px] text-stone-500 uppercase font-medium">
+                          {getViewName(state.views.find(v => v.id === ann.view) || state.views[0], state.views)}
+                        </div>
                         <div className="flex gap-2 mt-1">
                           <Input
                             placeholder="Condition details..."
