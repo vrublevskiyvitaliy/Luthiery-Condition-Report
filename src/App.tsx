@@ -6,6 +6,7 @@
 import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { 
   FileDown, 
+  FileUp,
   Trash2, 
   Undo2, 
   Plus, 
@@ -52,7 +53,7 @@ export default function App() {
   const [currentView, setCurrentView] = useState<string>('view-front-1');
   const [currentTool, setCurrentTool] = useState<string>('none');
   const [currentColor, setCurrentColor] = useState<string>(COLORS[0].value);
-  const [currentWidth, setCurrentWidth] = useState<number>(3);
+  const [currentWidth, setCurrentWidth] = useState<number>(1);
   const [currentHatch, setCurrentHatch] = useState<string>('none');
   const [zoom, setZoom] = useState<number>(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -64,6 +65,7 @@ export default function App() {
   const [editingViewName, setEditingViewName] = useState('');
   const canvasContainerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [containerSize, setContainerSize] = useState({ width: 800, height: 1000 });
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -519,6 +521,41 @@ export default function App() {
     setIsExporting(false);
 
     doc.save(`${state.instrumentName.replace(/\s+/g, '_')}_Report_${new Date().toISOString().split('T')[0]}.pdf`);
+  };
+
+  const saveSession = () => {
+    const dataStr = JSON.stringify(state, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+    const exportFileDefaultName = `${state.instrumentName.replace(/\s+/g, '_')}_session.json`;
+    
+    const linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const json = JSON.parse(e.target?.result as string);
+        if (json.views && json.annotations) {
+          setState(json);
+          if (json.views.length > 0) {
+            setCurrentView(json.views[0].id);
+          }
+        } else {
+          // Fallback or better validation could go here
+        }
+      } catch (err) {
+        console.error('Error loading session:', err);
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
   };
 
   return (
@@ -1006,8 +1043,26 @@ export default function App() {
         <footer className="col-span-3 border-t border-border flex justify-between items-center px-5 text-[11px] bg-card">
           <div className="opacity-60">Drafting Mode: Enabled / Coordinate System: mm / Grid: Off</div>
           <div className="flex gap-2">
-            <Button variant="outline" className="h-7 px-3 text-[10px] uppercase font-bold rounded-none border-border">
-              Save Session
+            <input
+              type="file"
+              ref={fileInputRef}
+              className="hidden"
+              accept=".json"
+              onChange={handleFileUpload}
+            />
+            <Button 
+              variant="outline" 
+              className="h-7 px-3 text-[10px] uppercase font-bold rounded-none border-border gap-2"
+              onClick={() => fileInputRef.current?.click()}
+            >
+              <FileUp className="w-3 h-3" /> Import Data
+            </Button>
+            <Button 
+              variant="outline" 
+              className="h-7 px-3 text-[10px] uppercase font-bold rounded-none border-border gap-2"
+              onClick={saveSession}
+            >
+              <FileDown className="w-3 h-3" /> Export Data
             </Button>
             <Button className="h-7 px-3 text-[10px] uppercase font-bold rounded-none bg-primary text-primary-foreground" onClick={exportToPDF}>
               Export PDF Report
