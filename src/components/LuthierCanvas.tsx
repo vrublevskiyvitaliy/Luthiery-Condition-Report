@@ -3,10 +3,12 @@ import { Stage, Layer, Line, Text, Arrow, Image as KonvaImage, Group, Rect, Tran
 import { Annotation, Point } from '@/src/types';
 import { regularizePath, regularizeArea } from '../lib/geometry';
 import useImage from 'use-image';
-import frontSvg from '../front.svg';
-import backSvg from '../back.svg';
-import ribsSvg from '../ribs.svg';
-import scrollSvg from '../scroll.svg';
+import frontSvg from '../outlines/front v2.svg';
+import backSvg from '../outlines/back v2.svg';
+import ribsSvg from '../outlines/ribs v2.svg';
+import scrollSvg from '../outlines/scroll v2.svg';
+import frontInsideSvg from '../outlines/front inside v2.svg';
+import backInsideSvg from '../outlines/back inside v2.svg';
 
 interface LuthierCanvasProps {
   annotations: Annotation[];
@@ -99,10 +101,12 @@ const LuthierCanvas = React.forwardRef<any, LuthierCanvasProps>(({
   const [backImage] = useImage(backSvg);
   const [ribsImage] = useImage(ribsSvg);
   const [scrollImage] = useImage(scrollSvg);
+  const [frontInsideImage] = useImage(frontInsideSvg);
+  const [backInsideImage] = useImage(backInsideSvg);
 
   const currentImage = 
-    viewType === 'front' ? frontImage : 
-    viewType === 'back' ? backImage : 
+    viewType === 'front' ? (isInternal ? frontInsideImage : frontImage) : 
+    viewType === 'back' ? (isInternal ? backInsideImage : backImage) : 
     viewType === 'ribs' ? ribsImage : 
     viewType === 'scroll' ? scrollImage : 
     null;

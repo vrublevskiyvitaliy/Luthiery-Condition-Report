@@ -589,7 +589,7 @@ export default function App() {
         <header className="col-span-3 border-b-2 border-border flex items-center px-5 gap-10 bg-card">
           <div className="font-mono font-bold text-lg tracking-tight">Condition Report</div>
           <div className="text-[10px] uppercase tracking-[0.1em] opacity-70 font-medium">
-            Luthier Annotation Workspace / Last updated: 14/04/2026
+            Luthier Annotation Workspace
           </div>
         </header>
 
@@ -1066,8 +1066,7 @@ export default function App() {
         {/* Footer */}
         <footer className="col-span-3 border-t border-border flex justify-between items-center px-5 text-[11px] bg-card">
           <div className="flex items-center gap-4">
-            <div className="opacity-60">Drafting Mode: Enabled / Coordinate System: mm / Grid: Off</div>
-            <div className="text-stone-400 italic text-[10px] border-l border-stone-200 pl-4">
+            <div className="text-stone-400 italic text-[10px]">
               {DEVELOPER_INFO}
             </div>
           </div>
